@@ -12,6 +12,8 @@ import ProfileScreen from '../screens/ProfileScreen';
 import PostDetailsScreen from '../screens/PostDetailsScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
 import EditPostScreen from '../screens/EditPostScreen';
+import SearchScreen from '../screens/SearchScreen';
+import FollowingScreen from '../screens/FollowingScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -37,7 +39,7 @@ export const Navigation = () => {
             <Stack.Screen
               name="Home"
               component={HomeScreen}
-              options={{ title: 'Bread Strava' }}
+              options={{ title: 'Bread Feed' }}
             />
             <Stack.Screen
               name="Profile"
@@ -58,6 +60,16 @@ export const Navigation = () => {
               name="EditPost"
               component={EditPostScreen}
               options={{ title: 'Edit Post' }}
+            />
+            <Stack.Screen
+              name="Search"
+              component={SearchScreen}
+              options={{ title: 'Find Bakers' }}
+            />
+            <Stack.Screen
+              name="Following"
+              component={FollowingScreen}
+              options={{ title: 'Following' }}
             />
           </>
         ) : (

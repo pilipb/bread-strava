@@ -1,12 +1,13 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { BreadPost } from '../types';
-import { getAllPosts, getUserPosts, getPostById, createPost, updatePost, deletePost } from '../services/firebase';
+import { getAllPosts, getUserPosts, getPostById, createPost, updatePost, deletePost, getFollowingPosts } from '../services/firebase';
 
 interface PostsState {
   posts: BreadPost[];
   userPosts: BreadPost[];
   currentPost: BreadPost | null;
   loading: boolean;
+  refreshing: boolean;
   error: string | null;
 }
 
@@ -15,6 +16,7 @@ const initialState: PostsState = {
   userPosts: [],
   currentPost: null,
   loading: false,
+  refreshing: false,
   error: null,
 };
 
@@ -56,15 +58,17 @@ export const addNewPost = createAsyncThunk(
   async (
     {
       post,
-      image,
+      images,
     }: {
-      post: Omit<BreadPost, 'id' | 'createdAt' | 'likes' | 'comments' | 'photoURL'>;
-      image: string;
+      post: Omit<BreadPost, 'id' | 'createdAt' | 'likes' | 'comments' | 'photoURL' | 'photoURLs'>;
+      images: string | string[];
     },
     { rejectWithValue }
   ) => {
     try {
-      const newPost = await createPost({ ...post } as Omit<BreadPost, 'id' | 'createdAt' | 'likes' | 'comments'>, image);
+      // Handle both single image and multiple images for backward compatibility
+      const imageArray = Array.isArray(images) ? images : [images];
+      const newPost = await createPost({ ...post } as Omit<BreadPost, 'id' | 'createdAt' | 'likes' | 'comments'>, imageArray);
       return newPost;
     } catch (error: any) {
       return rejectWithValue(error.message);
@@ -91,6 +95,30 @@ export const removePost = createAsyncThunk(
     try {
       await deletePost(postId);
       return postId;
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const fetchFollowingPosts = createAsyncThunk(
+  'posts/fetchFollowing',
+  async (followingIds: string[], { rejectWithValue }) => {
+    try {
+      const posts = await getFollowingPosts(followingIds);
+      return posts;
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const refreshFollowingPosts = createAsyncThunk(
+  'posts/refreshFollowing',
+  async (followingIds: string[], { rejectWithValue }) => {
+    try {
+      const posts = await getFollowingPosts(followingIds);
+      return posts;
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -191,6 +219,30 @@ const postsSlice = createSlice({
       })
       .addCase(removePost.rejected, (state, action) => {
         state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(fetchFollowingPosts.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchFollowingPosts.fulfilled, (state, action) => {
+        state.loading = false;
+        state.posts = action.payload;
+      })
+      .addCase(fetchFollowingPosts.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      })
+      .addCase(refreshFollowingPosts.pending, (state) => {
+        state.refreshing = true;
+        state.error = null;
+      })
+      .addCase(refreshFollowingPosts.fulfilled, (state, action) => {
+        state.refreshing = false;
+        state.posts = action.payload;
+      })
+      .addCase(refreshFollowingPosts.rejected, (state, action) => {
+        state.refreshing = false;
         state.error = action.payload as string;
       });
   },

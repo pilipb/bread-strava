@@ -9,13 +9,19 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
+  StatusBar,
+  Dimensions,
+  FlatList,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList, Comment } from '../types';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchPostById, removePost } from '../store/postsSlice';
-import { addComment, getCommentsForPost } from '../services/firebase';
+import { addComment, getCommentsForPost, likePost, unlikePost, checkIfUserLikedPost } from '../services/firebase';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
 
 type PostDetailsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'PostDetails'>;
@@ -36,11 +42,24 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isRisen, setIsRisen] = useState(false);
+  const [risingPost, setRisingPost] = useState(false);
 
   useEffect(() => {
     dispatch(fetchPostById(postId));
     loadComments();
   }, [dispatch, postId]);
+
+  useEffect(() => {
+    // Check if user has risen this post
+    if (user && currentPost) {
+      checkIfUserLikedPost(postId, user.id)
+        .then(setIsRisen)
+        .catch(console.error);
+    }
+  }, [user, currentPost, postId]);
 
   const loadComments = async () => {
     try {
@@ -49,6 +68,7 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
       setComments(postComments);
     } catch (error) {
       console.error('Error loading comments:', error);
+      // Don't show alert here as it might be called repeatedly
     } finally {
       setCommentsLoading(false);
     }
@@ -61,19 +81,32 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
       return;
     }
 
+    if (submittingComment) {
+      return;
+    }
+
     try {
       setSubmittingComment(true);
+      
+      const trimmedText = commentText.trim();
+      
       await addComment(
         postId,
         user.id,
         user.username,
         user.photoURL,
-        commentText.trim()
+        trimmedText
       );
+      
+      console.log('Comment submitted successfully, clearing input');
       setCommentText('');
-      loadComments();
+      
+      // Wait for comments to reload before re-enabling the button
+      await loadComments();
+      
       // Refresh post to update comment count
       dispatch(fetchPostById(postId));
+      
     } catch (error) {
       console.error('Error submitting comment:', error);
       Alert.alert('Error', 'Failed to post comment. Please try again.');
@@ -132,6 +165,76 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  // Get all image URLs (supports both single and multiple images)
+  const getImageURLs = () => {
+    if (!currentPost) return [];
+    
+    // If post has multiple images, use those
+    if (currentPost.photoURLs && currentPost.photoURLs.length > 0) {
+      return currentPost.photoURLs;
+    }
+    
+    // Fall back to single image for backward compatibility
+    return currentPost.photoURL ? [currentPost.photoURL] : [];
+  };
+
+  const imageURLs = getImageURLs();
+
+  const openImageModal = (index: number) => {
+    setCurrentImageIndex(index);
+    setImageModalVisible(true);
+  };
+
+  const renderImageItem = ({ item, index }: { item: string; index: number }) => (
+    <TouchableOpacity 
+      onPress={() => openImageModal(index)}
+      activeOpacity={0.9}
+      style={styles.imageItem}
+    >
+      <Image source={{ uri: item }} style={styles.postImage} />
+    </TouchableOpacity>
+  );
+
+  const renderModalImageItem = ({ item }: { item: string }) => (
+    <View style={styles.modalImageContainer}>
+      <Image 
+        source={{ uri: item }} 
+        style={styles.fullScreenImage}
+        resizeMode="contain"
+      />
+    </View>
+  );
+
+  const handleRisePost = async () => {
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to rise posts');
+      return;
+    }
+
+    if (risingPost) return;
+
+    try {
+      setRisingPost(true);
+      
+      if (isRisen) {
+        await unlikePost(postId, user.id);
+        setIsRisen(false);
+      } else {
+        await likePost(postId, user.id);
+        setIsRisen(true);
+      }
+      
+      // Refresh post to update rise count
+      dispatch(fetchPostById(postId));
+      
+    } catch (error) {
+      console.error('Error rising/unrising post:', error);
+      Alert.alert('Error', 'Failed to update rise. Please try again.');
+    } finally {
+      setRisingPost(false);
+    }
+  };
+
   if (loading || !currentPost) {
     return (
       <View style={styles.loaderContainer}>
@@ -143,8 +246,49 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <Image source={{ uri: currentPost.photoURL }} style={styles.postImage} />
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoidingContainer}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+          style={styles.scrollView}
+        >
+        {/* Image Gallery */}
+        {imageURLs.length > 0 && (
+          <View style={styles.imageGalleryContainer}>
+            <FlatList
+              data={imageURLs}
+              renderItem={renderImageItem}
+              keyExtractor={(item, index) => `post-image-${index}`}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              style={styles.imageGallery}
+              onMomentumScrollEnd={(event) => {
+                const index = Math.round(event.nativeEvent.contentOffset.x / Dimensions.get('window').width);
+                setCurrentImageIndex(index);
+              }}
+            />
+            
+            {imageURLs.length > 1 && (
+              <View style={styles.imageIndicatorContainer}>
+                {imageURLs.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.imageIndicator,
+                      index === currentImageIndex && styles.activeImageIndicator
+                    ]}
+                  />
+                ))}
+              </View>
+            )}
+          </View>
+        )}
         
         <View style={styles.postContent}>
           <View style={styles.headerRow}>
@@ -195,6 +339,28 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
                 <Text style={styles.timeValue}>{currentPost.cookingTime} min</Text>
               </View>
             )}
+            
+            <View style={styles.riseSection}>
+              <TouchableOpacity 
+                style={styles.riseButton}
+                onPress={handleRisePost}
+                disabled={risingPost}
+              >
+                {risingPost ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <>
+                    <Text style={[styles.riseIcon, isRisen && styles.risenIcon]}>
+                      {isRisen ? '🍞' : '⬆️'}
+                    </Text>
+                    <Text style={styles.riseCount}>{currentPost.likes}</Text>
+                    <Text style={styles.riseLabel}>
+                      {currentPost.likes === 1 ? 'rise' : 'rises'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
           
           <Text style={styles.postDescription}>{currentPost.description}</Text>
@@ -249,31 +415,88 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
             </>
           )}
         </View>
-      </ScrollView>
-      
-      {user && (
-        <View style={styles.commentInputContainer}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="Add a comment..."
-            placeholderTextColor={COLORS.darkGray}
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
+        </ScrollView>
+        
+        {user && (
+          <View style={styles.commentInputContainer}>
+            <View style={styles.inputRow}>
+              {user.photoURL ? (
+                <Image source={{ uri: user.photoURL }} style={styles.inputAvatar} />
+              ) : (
+                <View style={[styles.inputAvatar, styles.noAvatar]}>
+                  <Text style={styles.inputAvatarText}>{user.username.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <TextInput
+                style={styles.commentInput}
+                placeholder="Add a comment..."
+                placeholderTextColor={COLORS.darkGray}
+                value={commentText}
+                onChangeText={setCommentText}
+                multiline
+                maxLength={500}
+              />
+              <TouchableOpacity 
+                style={[styles.commentButton, !commentText.trim() && styles.disabledButton]}
+                onPress={handleSubmitComment}
+                disabled={!commentText.trim() || submittingComment}
+              >
+                {submittingComment ? (
+                  <ActivityIndicator size="small" color={COLORS.background} />
+                ) : (
+                  <Text style={styles.commentButtonText}>Post</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setImageModalVisible(false)}
+      >
+        <View style={styles.imageModalContainer}>
+          <StatusBar backgroundColor="black" barStyle="light-content" />
+          
+          <FlatList
+            data={imageURLs}
+            renderItem={renderModalImageItem}
+            keyExtractor={(item, index) => `modal-image-${index}`}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={currentImageIndex}
+            getItemLayout={(data, index) => ({
+              length: Dimensions.get('window').width,
+              offset: Dimensions.get('window').width * index,
+              index,
+            })}
+            onMomentumScrollEnd={(event) => {
+              const index = Math.round(event.nativeEvent.contentOffset.x / Dimensions.get('window').width);
+              setCurrentImageIndex(index);
+            }}
           />
+          
           <TouchableOpacity 
-            style={[styles.commentButton, !commentText.trim() && styles.disabledButton]}
-            onPress={handleSubmitComment}
-            disabled={!commentText.trim() || submittingComment}
+            style={styles.closeButton}
+            onPress={() => setImageModalVisible(false)}
           >
-            {submittingComment ? (
-              <ActivityIndicator size="small" color={COLORS.background} />
-            ) : (
-              <Text style={styles.commentButtonText}>Post</Text>
-            )}
+            <Text style={styles.closeButtonText}>✕</Text>
           </TouchableOpacity>
+          
+          {imageURLs.length > 1 && (
+            <View style={styles.modalImageIndicatorContainer}>
+              <Text style={styles.imageCounterText}>
+                {currentImageIndex + 1} / {imageURLs.length}
+              </Text>
+            </View>
+          )}
         </View>
-      )}
+      </Modal>
     </View>
   );
 };
@@ -282,6 +505,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  keyboardAvoidingContainer: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 80,
   },
   loaderContainer: {
     flex: 1,
@@ -297,6 +529,9 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 250,
     resizeMode: 'cover',
+  },
+  imageItem: {
+    width: Dimensions.get('window').width,
   },
   postContent: {
     padding: SPACING.md,
@@ -399,6 +634,32 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontWeight: 'bold',
   },
+  riseSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: SPACING.md,
+  },
+  riseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  riseIcon: {
+    fontSize: FONT_SIZE.lg,
+    marginRight: SPACING.xs,
+  },
+  risenIcon: {
+    color: COLORS.error,
+  },
+  riseCount: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    fontWeight: 'bold',
+  },
+  riseLabel: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.darkGray,
+    marginLeft: SPACING.xs,
+  },
   postDescription: {
     fontSize: FONT_SIZE.md,
     color: COLORS.text,
@@ -491,11 +752,26 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   commentInputContainer: {
-    flexDirection: 'row',
-    padding: SPACING.sm,
+    padding: SPACING.md,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.background,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    width: '100%',
+  },
+  inputAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: BORDER_RADIUS.round,
+    marginRight: SPACING.sm,
+  },
+  inputAvatarText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: 'bold',
   },
   commentInput: {
     flex: 1,
@@ -503,21 +779,100 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.sm,
     maxHeight: 100,
+    minHeight: 40,
     fontSize: FONT_SIZE.md,
     color: COLORS.text,
+    marginRight: SPACING.sm,
+    textAlignVertical: 'top',
   },
   commentButton: {
     backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
     justifyContent: 'center',
-    marginLeft: SPACING.sm,
+    alignItems: 'center',
+    minHeight: 40,
   },
   disabledButton: {
     backgroundColor: COLORS.mediumGray,
   },
   commentButtonText: {
     color: COLORS.background,
+    fontWeight: 'bold',
+  },
+  // Full Screen Image Modal Styles
+  imageModalContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalCloseArea: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  imageGalleryContainer: {
+    marginBottom: SPACING.md,
+  },
+  imageGallery: {
+    height: 250,
+  },
+  imageIndicatorContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: SPACING.xs,
+  },
+  imageIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: BORDER_RADIUS.round,
+    backgroundColor: COLORS.darkGray,
+    marginHorizontal: SPACING.xs,
+  },
+  activeImageIndicator: {
+    backgroundColor: COLORS.primary,
+  },
+  modalImageContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalImageIndicatorContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageCounterText: {
+    color: 'white',
+    fontSize: FONT_SIZE.sm,
     fontWeight: 'bold',
   },
 });

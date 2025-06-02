@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,12 +25,13 @@ interface Props {
 }
 
 const difficultyLevels = ['easy', 'medium', 'hard', 'expert'] as const;
+const MAX_IMAGES = 5;
 
 const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard' | 'expert'>('medium');
-  const [image, setImage] = useState<string | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [ingredients, setIngredients] = useState<string[]>(['']);
   const [preparationTime, setPreparationTime] = useState('');
   const [cookingTime, setCookingTime] = useState('');
@@ -38,28 +40,40 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
   const { loading, error } = useAppSelector((state) => state.posts);
   const { user } = useAppSelector((state) => state.auth);
 
-  const pickImage = async () => {
+  const pickImages = async () => {
+    if (images.length >= MAX_IMAGES) {
+      Alert.alert('Maximum Images', `You can only add up to ${MAX_IMAGES} images per post.`);
+      return;
+    }
+
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     
     if (permissionResult.granted === false) {
-      Alert.alert('Permission Required', 'You need to allow access to your photos to upload an image.');
+      Alert.alert('Permission Required', 'You need to allow access to your photos to upload images.');
       return;
     }
     
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.1,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_IMAGES - images.length,
+      allowsEditing: false,
+      quality: 0.8,
       base64: false,
     });
     
     if (!result.canceled) {
-      setImage(result.assets[0].uri);
+      const newImages = result.assets.map(asset => asset.uri);
+      setImages(prevImages => [...prevImages, ...newImages].slice(0, MAX_IMAGES));
     }
   };
 
   const takePhoto = async () => {
+    if (images.length >= MAX_IMAGES) {
+      Alert.alert('Maximum Images', `You can only add up to ${MAX_IMAGES} images per post.`);
+      return;
+    }
+
     const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
     
     if (permissionResult.granted === false) {
@@ -74,8 +88,12 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
     });
     
     if (!result.canceled) {
-      setImage(result.assets[0].uri);
+      setImages(prevImages => [...prevImages, result.assets[0].uri].slice(0, MAX_IMAGES));
     }
+  };
+
+  const removeImage = (index: number) => {
+    setImages(prevImages => prevImages.filter((_, i) => i !== index));
   };
 
   const handleAddIngredient = () => {
@@ -107,8 +125,8 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
 
-    if (!image) {
-      Alert.alert('Missing Image', 'Please add a photo of your bread creation.');
+    if (images.length === 0) {
+      Alert.alert('Missing Images', 'Please add at least one photo of your bread creation.');
       return;
     }
 
@@ -133,7 +151,7 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
             preparationTime: preparationTime ? parseInt(preparationTime, 10) : undefined,
             cookingTime: cookingTime ? parseInt(cookingTime, 10) : undefined,
           },
-          image,
+          images,
         })
       ).unwrap();
 
@@ -143,6 +161,18 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  const renderImageItem = ({ item, index }: { item: string; index: number }) => (
+    <View style={styles.imageItem}>
+      <Image source={{ uri: item }} style={styles.previewImage} />
+      <TouchableOpacity 
+        style={styles.removeImageButton}
+        onPress={() => removeImage(index)}
+      >
+        <Text style={styles.removeImageText}>✕</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <Text style={styles.title}>Share Your Bread Creation</Text>
@@ -150,20 +180,41 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
       {error && <Text style={styles.errorText}>{error}</Text>}
       
       <View style={styles.imageContainer}>
-        {image ? (
-          <Image source={{ uri: image }} style={styles.previewImage} />
+        {images.length > 0 ? (
+          <>
+            <FlatList
+              data={images}
+              renderItem={renderImageItem}
+              keyExtractor={(item, index) => `image-${index}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.imagesList}
+            />
+            <Text style={styles.imageCountText}>
+              {images.length} of {MAX_IMAGES} images
+            </Text>
+          </>
         ) : (
           <View style={styles.imagePlaceholder}>
-            <Text style={styles.imagePlaceholderText}>Add Photo</Text>
+            <Text style={styles.imagePlaceholderText}>Add Photos</Text>
+            <Text style={styles.imagePlaceholderSubtext}>Up to {MAX_IMAGES} images</Text>
           </View>
         )}
         
         <View style={styles.imageButtonsContainer}>
-          <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+          <TouchableOpacity 
+            style={[styles.imageButton, images.length >= MAX_IMAGES && styles.disabledButton]} 
+            onPress={pickImages}
+            disabled={images.length >= MAX_IMAGES}
+          >
             <Text style={styles.imageButtonText}>Gallery</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
+          <TouchableOpacity 
+            style={[styles.imageButton, images.length >= MAX_IMAGES && styles.disabledButton]} 
+            onPress={takePhoto}
+            disabled={images.length >= MAX_IMAGES}
+          >
             <Text style={styles.imageButtonText}>Camera</Text>
           </TouchableOpacity>
         </View>
@@ -334,6 +385,10 @@ const styles = StyleSheet.create({
     color: COLORS.darkGray,
     fontSize: FONT_SIZE.md,
   },
+  imagePlaceholderSubtext: {
+    color: COLORS.mediumGray,
+    fontSize: FONT_SIZE.sm,
+  },
   imageButtonsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -449,6 +504,37 @@ const styles = StyleSheet.create({
     color: COLORS.background,
     fontSize: FONT_SIZE.md,
     fontWeight: 'bold',
+  },
+  imageItem: {
+    position: 'relative',
+    marginRight: SPACING.sm,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 20,
+    height: 20,
+    borderRadius: BORDER_RADIUS.round,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeImageText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
+  },
+  imagesList: {
+    marginBottom: SPACING.sm,
+  },
+  imageCountText: {
+    color: COLORS.mediumGray,
+    fontSize: FONT_SIZE.sm,
+    textAlign: 'center',
+  },
+  disabledButton: {
+    backgroundColor: COLORS.disabled,
   },
 });
 

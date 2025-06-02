@@ -37,7 +37,9 @@ export const login = createAsyncThunk(
           id: firebaseUser.uid,
           username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
           email: firebaseUser.email || '',
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          following: [],
+          followers: []
         };
         
         // Create the user profile in Firestore
@@ -86,6 +88,11 @@ const authSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    updateUserProfile: (state, action) => {
+      if (state.user) {
+        state.user = { ...state.user, ...action.payload };
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -127,5 +134,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError } = authSlice.actions;
+export const { clearError, updateUserProfile } = authSlice.actions;
 export default authSlice.reducer; 

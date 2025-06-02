@@ -13,6 +13,7 @@ export const COLORS = {
   lightGray: '#F2F2F2',
   mediumGray: '#CCCCCC',
   darkGray: '#666666',
+  disabled: '#AAAAAA',
 };
 
 export const FONT_SIZE = {

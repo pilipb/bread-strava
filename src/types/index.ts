@@ -4,6 +4,8 @@ export interface User {
   email: string;
   photoURL?: string;
   bio?: string;
+  following: string[]; // Array of user IDs that this user follows
+  followers: string[]; // Array of user IDs that follow this user
   createdAt: number;
 }
 
@@ -14,7 +16,8 @@ export interface BreadPost {
   userPhotoURL?: string;
   title: string;
   description: string;
-  photoURL: string;
+  photoURL: string; // Keep for backward compatibility with existing posts
+  photoURLs?: string[]; // New field for multiple photos
   difficulty: 'easy' | 'medium' | 'hard' | 'expert';
   ingredients?: string[];
   preparationTime?: number; // in minutes
@@ -42,4 +45,6 @@ export type RootStackParamList = {
   PostDetails: { postId: string };
   CreatePost: undefined;
   EditPost: { postId: string };
+  Search: undefined;
+  Following: { userId: string; type: 'following' | 'followers' };
 }; 

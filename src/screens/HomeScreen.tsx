@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, FlatList, TouchableOpacity, ActivityIndicator, 
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList, BreadPost } from '../types';
 import { useAppDispatch, useAppSelector } from '../store';
-import { fetchAllPosts } from '../store/postsSlice';
+import { fetchFollowingPosts, refreshFollowingPosts } from '../store/postsSlice';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
@@ -14,12 +14,41 @@ interface Props {
 
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const dispatch = useAppDispatch();
-  const { posts, loading, error } = useAppSelector((state) => state.posts);
+  const { posts, loading, refreshing, error } = useAppSelector((state) => state.posts);
   const { user } = useAppSelector((state) => state.auth);
 
   useEffect(() => {
-    dispatch(fetchAllPosts());
-  }, [dispatch]);
+    if (user) {
+      // Include user's own ID plus those they follow for the feed
+      const feedUserIds = user.following && user.following.length > 0 
+        ? [...user.following, user.id] 
+        : [user.id];
+      dispatch(fetchFollowingPosts(feedUserIds));
+    }
+  }, [dispatch, user]);
+
+  useEffect(() => {
+    // Set navigation options with profile picture in header
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity 
+          style={styles.headerProfileButton}
+          onPress={handleMyProfile}
+          activeOpacity={0.7}
+        >
+          {user?.photoURL ? (
+            <Image source={{ uri: user.photoURL }} style={styles.headerProfileAvatar} />
+          ) : (
+            <View style={[styles.headerProfileAvatar, styles.noHeaderProfileAvatar]}>
+              <Text style={styles.headerProfileAvatarText}>
+                {user?.username?.charAt(0)?.toUpperCase() || 'U'}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, user]);
 
   const handlePostPress = (postId: string) => {
     navigation.navigate('PostDetails', { postId });
@@ -33,55 +62,80 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('CreatePost');
   };
 
-  const renderPostItem = ({ item }: { item: BreadPost }) => (
-    <TouchableOpacity 
-      style={styles.postCard}
-      onPress={() => handlePostPress(item.id)}
-      activeOpacity={0.9}
-    >
-      <Image source={{ uri: item.photoURL }} style={styles.postImage} />
-      
-      <View style={styles.postContent}>
-        <Text style={styles.postTitle}>{item.title}</Text>
+  const handleMyProfile = () => {
+    if (user) {
+      navigation.navigate('Profile', { userId: user.id });
+    }
+  };
+
+  const renderPostItem = ({ item }: { item: BreadPost }) => {
+    // Get the first image URL (supports both single and multiple images)
+    const getFirstImageURL = (post: BreadPost) => {
+      if (post.photoURLs && post.photoURLs.length > 0) {
+        return post.photoURLs[0];
+      }
+      return post.photoURL;
+    };
+
+    const hasMultipleImages = item.photoURLs && item.photoURLs.length > 1;
+
+    return (
+      <TouchableOpacity 
+        style={styles.postCard}
+        onPress={() => handlePostPress(item.id)}
+        activeOpacity={0.9}
+      >
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: getFirstImageURL(item) }} style={styles.postImage} />
+          {hasMultipleImages && (
+            <View style={styles.multipleImagesIndicator}>
+              <Text style={styles.imageCountText}>📷 {item.photoURLs!.length}</Text>
+            </View>
+          )}
+        </View>
         
-        <View style={styles.postMeta}>
-          <TouchableOpacity 
-            onPress={() => handleProfilePress(item.userId)}
-            style={styles.userInfo}
-          >
-            {item.userPhotoURL ? (
-              <Image source={{ uri: item.userPhotoURL }} style={styles.userAvatar} />
-            ) : (
-              <View style={[styles.userAvatar, styles.noAvatar]}>
-                <Text style={styles.avatarText}>{item.username.charAt(0).toUpperCase()}</Text>
-              </View>
-            )}
-            <Text style={styles.username}>{item.username}</Text>
-          </TouchableOpacity>
+        <View style={styles.postContent}>
+          <Text style={styles.postTitle}>{item.title}</Text>
           
-          <View style={styles.difficultyBadge}>
-            <Text style={styles.difficultyText}>{item.difficulty}</Text>
+          <View style={styles.postMeta}>
+            <TouchableOpacity 
+              onPress={() => handleProfilePress(item.userId)}
+              style={styles.userInfo}
+            >
+              {item.userPhotoURL ? (
+                <Image source={{ uri: item.userPhotoURL }} style={styles.userAvatar} />
+              ) : (
+                <View style={[styles.userAvatar, styles.noAvatar]}>
+                  <Text style={styles.avatarText}>{item.username.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <Text style={styles.username}>{item.username}</Text>
+            </TouchableOpacity>
+            
+            <View style={styles.difficultyBadge}>
+              <Text style={styles.difficultyText}>{item.difficulty}</Text>
+            </View>
+          </View>
+          
+          <Text style={styles.postDescription} numberOfLines={2}>
+            {item.description}
+          </Text>
+          
+          <View style={styles.postStats}>
+            <View style={styles.stat}>
+              <Text style={styles.statCount}>{item.likes}</Text>
+              <Text style={styles.statLabel}>Rises</Text>
+            </View>
+            <View style={styles.stat}>
+              <Text style={styles.statCount}>{item.comments}</Text>
+              <Text style={styles.statLabel}>Comments</Text>
+            </View>
+            <Text style={styles.timeAgo}>{formatTimeAgo(item.createdAt)}</Text>
           </View>
         </View>
-        
-        <Text style={styles.postDescription} numberOfLines={2}>
-          {item.description}
-        </Text>
-        
-        <View style={styles.postStats}>
-          <View style={styles.stat}>
-            <Text style={styles.statCount}>{item.likes}</Text>
-            <Text style={styles.statLabel}>Likes</Text>
-          </View>
-          <View style={styles.stat}>
-            <Text style={styles.statCount}>{item.comments}</Text>
-            <Text style={styles.statLabel}>Comments</Text>
-          </View>
-          <Text style={styles.timeAgo}>{formatTimeAgo(item.createdAt)}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   const formatTimeAgo = (timestamp: number) => {
     const now = Date.now();
@@ -126,12 +180,39 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No bread posts yet!</Text>
-            <Text style={styles.emptySubtext}>Be the first to share your bread creation.</Text>
+            <Text style={styles.emptyText}>
+              {user?.following?.length === 0 
+                ? 'No posts in your feed!' 
+                : 'No bread posts yet!'
+              }
+            </Text>
+            <Text style={styles.emptySubtext}>
+              {user?.following?.length === 0 
+                ? 'Follow other bakers to see their posts in your feed.'
+                : 'The bakers you follow haven\'t posted yet.'
+              }
+            </Text>
+            {user?.following?.length === 0 && (
+              <TouchableOpacity 
+                style={styles.discoverButton}
+                onPress={() => navigation.navigate('Search')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.discoverButtonText}>Discover Bakers</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
-        refreshing={loading}
-        onRefresh={() => dispatch(fetchAllPosts())}
+        refreshing={refreshing}
+        onRefresh={() => {
+          if (user) {
+            // Include user's own ID plus those they follow for the feed
+            const feedUserIds = user.following && user.following.length > 0 
+              ? [...user.following, user.id] 
+              : [user.id];
+            dispatch(refreshFollowingPosts(feedUserIds));
+          }
+        }}
       />
       
       <TouchableOpacity 
@@ -163,6 +244,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
+  },
+  imageContainer: {
+    position: 'relative',
   },
   postImage: {
     width: '100%',
@@ -289,6 +373,17 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
     textAlign: 'center',
   },
+  discoverButton: {
+    backgroundColor: COLORS.primary,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.sm,
+    marginTop: SPACING.md,
+  },
+  discoverButtonText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
+  },
   fab: {
     position: 'absolute',
     bottom: SPACING.xl,
@@ -309,6 +404,37 @@ const styles = StyleSheet.create({
     fontSize: 30,
     color: COLORS.background,
     lineHeight: 50,
+  },
+  headerProfileButton: {
+    padding: SPACING.xs,
+  },
+  headerProfileAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: BORDER_RADIUS.round,
+  },
+  noHeaderProfileAvatar: {
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerProfileAvatarText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
+  },
+  multipleImagesIndicator: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: COLORS.primary,
+    padding: SPACING.xs,
+    borderRadius: BORDER_RADIUS.round,
+  },
+  imageCountText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.xs,
+    fontWeight: 'bold',
   },
 });
 
