@@ -90,6 +90,7 @@ const PostSearchScreen: React.FC<Props> = ({ navigation }) => {
         post={item}
         onPress={(postId) => navigation.navigate('PostDetails', { postId })}
         showSaveButton={!isOwnPost}
+        fullWidth={true}
       />
     );
   };
@@ -155,9 +156,7 @@ const PostSearchScreen: React.FC<Props> = ({ navigation }) => {
           data={searchResults}
           renderItem={renderPostItem}
           keyExtractor={(item) => item.id}
-          numColumns={2}
           contentContainerStyle={styles.listContent}
-          columnWrapperStyle={styles.postsRow}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             searchQuery.length >= 2 ? (

@@ -17,9 +17,10 @@ interface PostCardProps {
   post: BreadPost;
   onPress: (postId: string) => void;
   showSaveButton?: boolean;
+  fullWidth?: boolean;
 }
 
-const PostCard: React.FC<PostCardProps> = ({ post, onPress, showSaveButton = true }) => {
+const PostCard: React.FC<PostCardProps> = ({ post, onPress, showSaveButton = true, fullWidth }) => {
   const { user: currentUser } = useAppSelector((state) => state.auth);
   const [isSaved, setIsSaved] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -73,7 +74,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPress, showSaveButton = tru
 
   return (
     <TouchableOpacity 
-      style={styles.postCard}
+      style={fullWidth ? styles.fullWidthPostCard : styles.postCard}
       onPress={() => onPress(post.id)}
       activeOpacity={0.9}
     >
@@ -126,6 +127,18 @@ const PostCard: React.FC<PostCardProps> = ({ post, onPress, showSaveButton = tru
 const styles = StyleSheet.create({
   postCard: {
     width: '48%',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    marginBottom: SPACING.md,
+    shadowColor: COLORS.text,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  fullWidthPostCard: {
+    width: '100%',
     backgroundColor: COLORS.card,
     borderRadius: BORDER_RADIUS.md,
     overflow: 'hidden',
