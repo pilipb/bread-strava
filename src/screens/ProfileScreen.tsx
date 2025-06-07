@@ -529,11 +529,12 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
         
-        {isOwnProfile && (
-          <View style={styles.activitySection}>
-            <ActivityGraph posts={userPosts} />
-          </View>
-        )}
+        <View style={styles.activitySection}>
+          <ActivityGraph 
+            posts={userPosts} 
+            username={!isOwnProfile ? profileUser?.username : undefined}
+          />
+        </View>
         
         <View style={styles.postsContainer}>
           <Text style={styles.sectionTitle}>

@@ -12,33 +12,94 @@ import {
   FlatList,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { RouteProp } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { RootStackParamList } from '../types';
+import * as Location from 'expo-location';
+import { RootStackParamList, Location as LocationType } from '../types';
 import { useAppDispatch, useAppSelector } from '../store';
 import { addNewPost } from '../store/postsSlice';
+import { createConnectedPost } from '../services/firebase';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
 
 type CreatePostScreenNavigationProp = StackNavigationProp<RootStackParamList, 'CreatePost'>;
+type CreatePostScreenRouteProp = RouteProp<RootStackParamList, 'CreatePost'>;
 
 interface Props {
   navigation: CreatePostScreenNavigationProp;
+  route: CreatePostScreenRouteProp;
 }
 
 const difficultyLevels = ['easy', 'medium', 'hard', 'expert'] as const;
 const MAX_IMAGES = 5;
 
-const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
-  const [title, setTitle] = useState('');
+const CreatePostScreen: React.FC<Props> = ({ navigation, route }) => {
+  const { 
+    originalRecipeId,
+    originalTitle,
+    originalIngredients,
+    originalDifficulty,
+    originalPreparationTime,
+    originalCookingTime,
+  } = route.params || {};
+
+  const [title, setTitle] = useState(originalTitle ? `My ${originalTitle}` : '');
   const [description, setDescription] = useState('');
-  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard' | 'expert'>('medium');
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard' | 'expert'>(originalDifficulty || 'medium');
   const [images, setImages] = useState<string[]>([]);
-  const [ingredients, setIngredients] = useState<string[]>(['']);
-  const [preparationTime, setPreparationTime] = useState('');
-  const [cookingTime, setCookingTime] = useState('');
+  const [ingredients, setIngredients] = useState<string[]>(originalIngredients || ['']);
+  const [preparationTime, setPreparationTime] = useState(originalPreparationTime?.toString() || '');
+  const [cookingTime, setCookingTime] = useState(originalCookingTime?.toString() || '');
+  const [location, setLocation] = useState<LocationType | null>(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [shareLocation, setShareLocation] = useState(true);
 
   const dispatch = useAppDispatch();
   const { loading, error } = useAppSelector((state) => state.posts);
   const { user } = useAppSelector((state) => state.auth);
+
+  const getLocation = async () => {
+    try {
+      setLocationLoading(true);
+      
+      // Request permission
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Location permission is needed to share where you baked this bread. This helps other bakers discover recipes from their area!'
+        );
+        setShareLocation(false);
+        return;
+      }
+
+      // Get current location
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      // Reverse geocode to get address
+      const [address] = await Location.reverseGeocodeAsync({
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+      });
+
+      const locationData: LocationType = {
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+        address: address?.name || undefined,
+        city: address?.city || undefined,
+        country: address?.country || undefined,
+      };
+
+      setLocation(locationData);
+    } catch (error) {
+      console.error('Error getting location:', error);
+      Alert.alert('Location Error', 'Unable to get your current location. You can still post without location data.');
+      setShareLocation(false);
+    } finally {
+      setLocationLoading(false);
+    }
+  };
 
   const pickImages = async () => {
     if (images.length >= MAX_IMAGES) {
@@ -130,6 +191,11 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
       return;
     }
 
+    // Get location if sharing location is enabled and we don't have it yet
+    if (shareLocation && !location && !locationLoading) {
+      await getLocation();
+    }
+
     const filteredIngredients = ingredients.filter((ingredient) => ingredient.trim() !== '');
 
     try {
@@ -138,22 +204,32 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
         return;
       }
 
-      await dispatch(
-        addNewPost({
-          post: {
-            userId: user.id,
-            username: user.username,
-            userPhotoURL: user.photoURL,
-            title: title.trim(),
-            description: description.trim(),
-            difficulty,
-            ingredients: filteredIngredients,
-            preparationTime: preparationTime ? parseInt(preparationTime, 10) : undefined,
-            cookingTime: cookingTime ? parseInt(cookingTime, 10) : undefined,
-          },
+      const postData = {
+        userId: user.id,
+        username: user.username,
+        userPhotoURL: user.photoURL,
+        title: title.trim(),
+        description: description.trim(),
+        photoURL: '', // Will be set by the createPost function
+        difficulty,
+        ingredients: filteredIngredients,
+        preparationTime: preparationTime ? parseInt(preparationTime, 10) : undefined,
+        cookingTime: cookingTime ? parseInt(cookingTime, 10) : undefined,
+        location: shareLocation && location ? location : undefined,
+        isOriginalRecipe: !originalRecipeId, // False if this is connected to an original recipe
+        connectedPosts: [], // Initialize empty connected posts array
+      };
+
+      if (originalRecipeId) {
+        // Create a connected post
+        await createConnectedPost(postData, images, originalRecipeId);
+      } else {
+        // Create a regular post
+        await dispatch(addNewPost({
+          post: postData,
           images,
-        })
-      ).unwrap();
+        })).unwrap();
+      }
 
       navigation.goBack();
     } catch (error) {
@@ -175,7 +251,17 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <Text style={styles.title}>Share Your Bread Creation</Text>
+      <Text style={styles.title}>
+        {originalRecipeId ? 'Share Your Version' : 'Share Your Bread Creation'}
+      </Text>
+      
+      {originalRecipeId && (
+        <View style={styles.connectedRecipeInfo}>
+          <Text style={styles.connectedRecipeText}>
+            🔗 Making a recipe you've tried? Share your version and it will be connected to the original!
+          </Text>
+        </View>
+      )}
 
       {error && <Text style={styles.errorText}>{error}</Text>}
       
@@ -324,6 +410,51 @@ const CreatePostScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </View>
       
+      <View style={styles.formGroup}>
+        <Text style={styles.label}>Share Location</Text>
+        <TouchableOpacity 
+          style={styles.locationToggle}
+          onPress={() => setShareLocation(!shareLocation)}
+        >
+          <View style={[styles.toggle, shareLocation && styles.toggleActive]}>
+            <View style={[styles.toggleThumb, shareLocation && styles.toggleThumbActive]} />
+          </View>
+          <Text style={styles.locationToggleText}>
+            Help other bakers discover recipes from your area
+          </Text>
+        </TouchableOpacity>
+        
+        {shareLocation && (
+          <View style={styles.locationInfo}>
+            {locationLoading ? (
+              <View style={styles.locationLoadingContainer}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.locationLoadingText}>Getting your location...</Text>
+              </View>
+            ) : location ? (
+              <View style={styles.locationDisplay}>
+                <Text style={styles.locationIcon}>📍</Text>
+                <View style={styles.locationTextContainer}>
+                  <Text style={styles.locationText}>
+                    {location.city && location.country 
+                      ? `${location.city}, ${location.country}`
+                      : 'Location detected'
+                    }
+                  </Text>
+                  <TouchableOpacity onPress={getLocation}>
+                    <Text style={styles.refreshLocationText}>Refresh location</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.getLocationButton} onPress={getLocation}>
+                <Text style={styles.getLocationButtonText}>📍 Get Current Location</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+      
       <TouchableOpacity
         style={styles.submitButton}
         onPress={handleSubmit}
@@ -364,10 +495,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
   previewImage: {
-    width: '100%',
-    height: 200,
+    width: 150,
+    height: 150,
     borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.sm,
   },
   imagePlaceholder: {
     width: '100%',
@@ -508,6 +638,7 @@ const styles = StyleSheet.create({
   imageItem: {
     position: 'relative',
     marginRight: SPACING.sm,
+    width: 150,
   },
   removeImageButton: {
     position: 'absolute',
@@ -527,6 +658,7 @@ const styles = StyleSheet.create({
   },
   imagesList: {
     marginBottom: SPACING.sm,
+    height: 150,
   },
   imageCountText: {
     color: COLORS.mediumGray,
@@ -535,6 +667,92 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: COLORS.disabled,
+  },
+  locationToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  toggle: {
+    width: 40,
+    height: 20,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.disabled,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  toggleActive: {
+    backgroundColor: COLORS.primary,
+  },
+  toggleThumb: {
+    width: 16,
+    height: 16,
+    borderRadius: BORDER_RADIUS.round,
+    backgroundColor: COLORS.background,
+    marginHorizontal: 2,
+  },
+  toggleThumbActive: {
+    backgroundColor: COLORS.background,
+  },
+  locationToggleText: {
+    color: COLORS.text,
+    fontSize: FONT_SIZE.sm,
+    marginLeft: SPACING.sm,
+  },
+  locationInfo: {
+    marginBottom: SPACING.lg,
+  },
+  locationLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  locationLoadingText: {
+    color: COLORS.text,
+    fontSize: FONT_SIZE.sm,
+  },
+  locationDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  locationIcon: {
+    color: COLORS.text,
+    fontSize: FONT_SIZE.md,
+    marginRight: SPACING.sm,
+  },
+  locationTextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  locationText: {
+    color: COLORS.text,
+    fontSize: FONT_SIZE.sm,
+  },
+  refreshLocationText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZE.sm,
+  },
+  getLocationButton: {
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+  },
+  getLocationButtonText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
+  },
+  connectedRecipeInfo: {
+    marginBottom: SPACING.lg,
+    padding: SPACING.sm,
+    backgroundColor: COLORS.lightGray,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  connectedRecipeText: {
+    color: COLORS.text,
+    fontSize: FONT_SIZE.sm,
   },
 });
 

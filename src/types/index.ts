@@ -9,6 +9,14 @@ export interface User {
   createdAt: number;
 }
 
+export interface Location {
+  latitude: number;
+  longitude: number;
+  address?: string;
+  city?: string;
+  country?: string;
+}
+
 export interface BreadPost {
   id: string;
   userId: string;
@@ -25,6 +33,11 @@ export interface BreadPost {
   likes: number;
   comments: number;
   createdAt: number;
+  // New fields for recipe tracking and location
+  location?: Location;
+  originalRecipeId?: string; // Reference to the original recipe if this is a "made this" post
+  isOriginalRecipe?: boolean; // True if this is the original recipe
+  connectedPosts?: string[]; // Array of post IDs that are connected to this recipe
 }
 
 export interface Comment {
@@ -43,8 +56,16 @@ export type RootStackParamList = {
   Home: undefined;
   Profile: { userId: string } | undefined;
   PostDetails: { postId: string };
-  CreatePost: undefined;
+  CreatePost: {
+    originalRecipeId?: string;
+    originalTitle?: string;
+    originalIngredients?: string[];
+    originalDifficulty?: 'easy' | 'medium' | 'hard' | 'expert';
+    originalPreparationTime?: number;
+    originalCookingTime?: number;
+  } | undefined;
   EditPost: { postId: string };
   Search: undefined;
   Following: { userId: string; type: 'following' | 'followers' };
+  RecipeMap: { originalRecipeId: string };
 }; 

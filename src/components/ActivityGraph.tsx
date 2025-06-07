@@ -6,6 +6,7 @@ import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
 
 interface ActivityGraphProps {
   posts: BreadPost[];
+  username?: string;
 }
 
 interface DayData {
@@ -14,7 +15,7 @@ interface DayData {
   totalTime: number;
 }
 
-const ActivityGraph: React.FC<ActivityGraphProps> = ({ posts }) => {
+const ActivityGraph: React.FC<ActivityGraphProps> = ({ posts, username }) => {
   const screenWidth = Dimensions.get('window').width;
   
   // Process posts to create data for the last 7 days
@@ -94,7 +95,9 @@ const ActivityGraph: React.FC<ActivityGraphProps> = ({ posts }) => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Weekly Baking Activity</Text>
+        <Text style={styles.title}>
+          {username ? `${username}'s Weekly Baking Activity` : 'Weekly Baking Activity'}
+        </Text>
         <View style={styles.stats}>
           <View style={styles.stat}>
             <Text style={styles.statValue}>{Math.round(totalWeekTime)}m</Text>

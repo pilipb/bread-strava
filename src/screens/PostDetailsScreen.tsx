@@ -235,6 +235,31 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  const handleMadeThis = () => {
+    if (currentPost) {
+      navigation.navigate('CreatePost', { 
+        // Pass the original recipe ID so we can connect the posts
+        originalRecipeId: currentPost.id,
+        // Pre-fill some data from the original recipe
+        originalTitle: currentPost.title,
+        originalIngredients: currentPost.ingredients,
+        originalDifficulty: currentPost.difficulty,
+        originalPreparationTime: currentPost.preparationTime,
+        originalCookingTime: currentPost.cookingTime,
+      });
+    }
+  };
+
+  const handleViewRecipeMap = () => {
+    const originalRecipeId = currentPost?.isOriginalRecipe 
+      ? currentPost.id 
+      : currentPost?.originalRecipeId;
+    
+    if (originalRecipeId) {
+      navigation.navigate('RecipeMap', { originalRecipeId });
+    }
+  };
+
   if (loading || !currentPost) {
     return (
       <View style={styles.loaderContainer}>
@@ -378,6 +403,59 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
               </View>
             </View>
           )}
+          
+          {/* Recipe Tracking Section */}
+          <View style={styles.recipeTrackingSection}>
+            {/* Show "I've made this" button if this is an original recipe and user is not the author */}
+            {currentPost.isOriginalRecipe && user && user.id !== currentPost.userId && (
+              <TouchableOpacity 
+                style={styles.madethisButton}
+                onPress={handleMadeThis}
+              >
+                <Text style={styles.madeThisIcon}>👨‍🍳</Text>
+                <Text style={styles.madeThisText}>I've Made This</Text>
+              </TouchableOpacity>
+            )}
+            
+            {/* Show Recipe Map button if this post has connected posts or is connected to an original */}
+            {((currentPost.isOriginalRecipe && currentPost.connectedPosts && currentPost.connectedPosts.length > 0) ||
+              (currentPost.originalRecipeId)) && (
+              <TouchableOpacity 
+                style={styles.recipeMapButton}
+                onPress={handleViewRecipeMap}
+              >
+                <Text style={styles.recipeMapIcon}>🗺️</Text>
+                <Text style={styles.recipeMapText}>View Recipe Map</Text>
+                {currentPost.isOriginalRecipe && currentPost.connectedPosts && (
+                  <Text style={styles.recipeMapCount}>
+                    ({currentPost.connectedPosts.length + 1} locations)
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+            
+            {/* Show location if available */}
+            {currentPost.location && (
+              <View style={styles.locationContainer}>
+                <Text style={styles.locationIcon}>📍</Text>
+                <Text style={styles.locationText}>
+                  {currentPost.location.city && currentPost.location.country
+                    ? `${currentPost.location.city}, ${currentPost.location.country}`
+                    : 'Location available'
+                  }
+                </Text>
+              </View>
+            )}
+            
+            {/* Show if this is a connected post */}
+            {currentPost.originalRecipeId && !currentPost.isOriginalRecipe && (
+              <View style={styles.connectedPostIndicator}>
+                <Text style={styles.connectedPostText}>
+                  🔗 Made from original recipe
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
         
         <View style={styles.commentsSection}>
@@ -872,6 +950,74 @@ const styles = StyleSheet.create({
   },
   imageCounterText: {
     color: 'white',
+    fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
+  },
+  recipeTrackingSection: {
+    marginBottom: SPACING.md,
+  },
+  madethisButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.sm,
+  },
+  madeThisIcon: {
+    fontSize: FONT_SIZE.lg,
+    marginRight: SPACING.xs,
+  },
+  madeThisText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
+  },
+  recipeMapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.sm,
+  },
+  recipeMapIcon: {
+    fontSize: FONT_SIZE.lg,
+    marginRight: SPACING.xs,
+  },
+  recipeMapText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
+  },
+  recipeMapCount: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.xs,
+    marginLeft: SPACING.xs,
+  },
+  locationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  locationIcon: {
+    fontSize: FONT_SIZE.lg,
+    marginRight: SPACING.xs,
+  },
+  locationText: {
+    color: COLORS.text,
+    fontSize: FONT_SIZE.sm,
+  },
+  connectedPostIndicator: {
+    backgroundColor: COLORS.primary,
+    padding: SPACING.xs,
+    borderRadius: BORDER_RADIUS.md,
+    marginRight: SPACING.md,
+  },
+  connectedPostText: {
+    color: COLORS.background,
     fontSize: FONT_SIZE.sm,
     fontWeight: 'bold',
   },

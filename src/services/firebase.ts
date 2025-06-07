@@ -646,4 +646,82 @@ export const getUsersByIds = async (userIds: string[]) => {
   }
 };
 
+// New functions for recipe connections
+export const connectPostToRecipe = async (originalRecipeId: string, newPostId: string) => {
+  try {
+    const batch = db.batch();
+    
+    // Update the original recipe to include the new connected post
+    const originalPostRef = db.collection('posts').doc(originalRecipeId);
+    const originalPost = await originalPostRef.get();
+    
+    if (originalPost.exists) {
+      const currentConnectedPosts = originalPost.data()?.connectedPosts || [];
+      batch.update(originalPostRef, {
+        connectedPosts: [...currentConnectedPosts, newPostId]
+      });
+    }
+    
+    // Update the new post to reference the original recipe
+    const newPostRef = db.collection('posts').doc(newPostId);
+    batch.update(newPostRef, {
+      originalRecipeId: originalRecipeId,
+      isOriginalRecipe: false
+    });
+    
+    await batch.commit();
+  } catch (error) {
+    console.error('Error connecting post to recipe:', error);
+    throw error;
+  }
+};
+
+export const getConnectedPosts = async (originalRecipeId: string) => {
+  try {
+    // Get the original recipe
+    const originalPost = await getPostById(originalRecipeId);
+    if (!originalPost) {
+      throw new Error('Original recipe not found');
+    }
+    
+    const connectedPostIds = originalPost.connectedPosts || [];
+    
+    // Get all connected posts
+    const connectedPosts = await Promise.all(
+      connectedPostIds.map(async (postId) => {
+        const post = await getPostById(postId);
+        return post;
+      })
+    );
+    
+    // Filter out any null posts and include the original
+    const validConnectedPosts = connectedPosts.filter(post => post !== null);
+    
+    return [originalPost, ...validConnectedPosts] as BreadPost[];
+  } catch (error) {
+    console.error('Error getting connected posts:', error);
+    throw error;
+  }
+};
+
+export const createConnectedPost = async (
+  post: Omit<BreadPost, 'id' | 'createdAt' | 'likes' | 'comments'>, 
+  images: string | string[],
+  originalRecipeId: string
+) => {
+  try {
+    // Create the post first
+    const newPost = await createPost(post, images);
+    
+    // Then connect it to the original recipe
+    await connectPostToRecipe(originalRecipeId, newPost.id);
+    
+    // Return the updated post
+    return await getPostById(newPost.id);
+  } catch (error) {
+    console.error('Error creating connected post:', error);
+    throw error;
+  }
+};
+
 export { auth, db as firestore, storage }; 

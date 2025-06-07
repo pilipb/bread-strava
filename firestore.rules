@@ -4,11 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Allow users to read all user profiles (for search, etc.)
     match /users/{userId} {
-      allow read: if request.auth != null;
-    }
-    
-    // Allow users to write to their own user profile
-    match /users/{userId} {
+      allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
     
@@ -23,33 +19,43 @@ service cloud.firestore {
     
     // Allow authenticated users to create posts and read all posts
     match /posts/{postId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      // Allow post author to update/delete their posts
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
-      // Allow authenticated users to update only the comments count (for comment functionality)
-      allow update: if request.auth != null && 
-        onlyUpdatingFields(['comments']) &&
-        isIncrementingCommentCount();
-      // Allow authenticated users to update only the likes count (for like functionality)
-      allow update: if request.auth != null && 
-        onlyUpdatingFields(['likes']) &&
-        isValidLikeUpdate();
+      allow read: if true;
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.userId;
+      allow delete: if request.auth != null && 
+                   request.auth.uid == resource.data.userId;
+      allow update: if request.auth != null && (
+        // Allow post owner to update their own posts
+        request.auth.uid == resource.data.userId ||
+        // Allow updating connectedPosts array (for recipe connections)
+        (!('userId' in request.resource.data.diff(resource.data).affectedKeys()) &&
+         !('createdAt' in request.resource.data.diff(resource.data).affectedKeys()) &&
+         !('username' in request.resource.data.diff(resource.data).affectedKeys())) ||
+        // Allow updating only the comments count (for comment functionality)
+        (onlyUpdatingFields(['comments']) && isIncrementingCommentCount()) ||
+        // Allow updating only the likes count (for like functionality)
+        (onlyUpdatingFields(['likes']) && isValidLikeUpdate())
+      );
     }
     
     // Allow authenticated users to read/write comments
     match /comments/{commentId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow read: if true;
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.userId;
+      allow update: if request.auth != null && 
+                   request.auth.uid == resource.data.userId;
+      allow delete: if request.auth != null && 
+                   request.auth.uid == resource.data.userId;
     }
     
     // Allow authenticated users to manage their own likes
     match /likes/{likeId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && 
-        (resource == null || request.auth.uid == resource.data.userId) &&
-        (request.resource == null || request.auth.uid == request.resource.data.userId);
+      allow read: if true;
+      allow create: if request.auth != null && 
+                   request.auth.uid == request.resource.data.userId;
+      allow delete: if request.auth != null && 
+                   request.auth.uid == resource.data.userId;
     }
     
     // Helper function to check if only specific fields are being updated

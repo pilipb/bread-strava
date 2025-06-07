@@ -14,6 +14,7 @@ import CreatePostScreen from '../screens/CreatePostScreen';
 import EditPostScreen from '../screens/EditPostScreen';
 import SearchScreen from '../screens/SearchScreen';
 import FollowingScreen from '../screens/FollowingScreen';
+import RecipeMapScreen from '../screens/RecipeMapScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -70,6 +71,11 @@ export const Navigation = () => {
               name="Following"
               component={FollowingScreen}
               options={{ title: 'Following' }}
+            />
+            <Stack.Screen
+              name="RecipeMap"
+              component={RecipeMapScreen}
+              options={{ title: 'Recipe Map' }}
             />
           </>
         ) : (

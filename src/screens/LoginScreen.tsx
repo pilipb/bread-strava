@@ -39,8 +39,8 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
           style={styles.logo}
           defaultSource={require('../../assets/bread-logo.png')}
         />
-        <Text style={styles.title}>Bread Strava</Text>
-        <Text style={styles.subtitle}>Share Your Bread Adventures</Text>
+        <Text style={styles.title}>Sourbro</Text>
+        <Text style={styles.subtitle}>Share Your Baking Adventures</Text>
       </View>
 
       <View style={styles.formContainer}>
@@ -97,8 +97,9 @@ const styles = StyleSheet.create({
   logoContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: SPACING.xxl,
-    marginBottom: SPACING.xl,
+    marginTop: SPACING.xxl * 1.5,
+    marginBottom: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
   },
   logo: {
     width: 120,
