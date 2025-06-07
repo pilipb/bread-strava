@@ -1,16 +1,83 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, View, Text, FlatList, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, Text, FlatList, TouchableOpacity, ActivityIndicator, Image, ScrollView, Dimensions } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList, BreadPost } from '../types';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchFollowingPosts, refreshFollowingPosts } from '../store/postsSlice';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
 
+const { width: screenWidth } = Dimensions.get('window');
+
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
 interface Props {
   navigation: HomeScreenNavigationProp;
 }
+
+// Image Carousel Component - moved outside to prevent re-renders
+const ImageCarousel = ({ images, onImagePress }: { images: string[]; onImagePress?: () => void }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  
+  const handleScroll = (event: any) => {
+    const scrollPosition = event.nativeEvent.contentOffset.x;
+    const imageWidth = screenWidth - (SPACING.md * 2);
+    const index = Math.round(scrollPosition / imageWidth);
+    setCurrentIndex(index);
+  };
+
+  if (images.length === 0) {
+    return (
+      <TouchableOpacity style={styles.noImageContainer} onPress={onImagePress} activeOpacity={0.9}>
+        <Text style={styles.noImageText}>No image available</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  const imageWidth = screenWidth - (SPACING.md * 2);
+
+  return (
+    <View style={styles.imageCarouselContainer}>
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+        decelerationRate="fast"
+        bounces={false}
+        style={{ flex: 1 }}
+      >
+        {images.map((imageUrl, index) => (
+          <TouchableOpacity
+            key={`${imageUrl}-${index}`}
+            onPress={onImagePress}
+            activeOpacity={0.9}
+            style={{ width: imageWidth }}
+          >
+            <Image 
+              source={{ uri: imageUrl }} 
+              style={[styles.postImage, { width: imageWidth }]} 
+            />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      
+      {images.length > 1 && (
+        <View style={styles.paginationContainer}>
+          {images.map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.paginationDot,
+                currentIndex === index && styles.paginationDotActive
+              ]}
+            />
+          ))}
+        </View>
+      )}
+    </View>
+  );
+};
 
 const HomeScreen: React.FC<Props> = ({ navigation }) => {
   const dispatch = useAppDispatch();
@@ -78,33 +145,24 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const renderPostItem = ({ item }: { item: BreadPost }) => {
-    // Get the first image URL (supports both single and multiple images)
-    const getFirstImageURL = (post: BreadPost) => {
+    // Get all image URLs (supports both single and multiple images)
+    const getAllImageURLs = (post: BreadPost): string[] => {
       if (post.photoURLs && post.photoURLs.length > 0) {
-        return post.photoURLs[0];
+        return post.photoURLs;
       }
-      return post.photoURL;
+      return post.photoURL ? [post.photoURL] : [];
     };
 
-    const hasMultipleImages = item.photoURLs && item.photoURLs.length > 1;
+    const imageUrls = getAllImageURLs(item);
 
     return (
-      <TouchableOpacity 
-        style={styles.postCard}
-        onPress={() => handlePostPress(item.id)}
-        activeOpacity={0.9}
-      >
-        <View style={styles.imageContainer}>
-          <Image source={{ uri: getFirstImageURL(item) }} style={styles.postImage} />
-          {hasMultipleImages && (
-            <View style={styles.multipleImagesIndicator}>
-              <Text style={styles.imageCountText}>📷 {item.photoURLs!.length}</Text>
-            </View>
-          )}
-        </View>
+      <View style={styles.postCard}>
+        <ImageCarousel images={imageUrls} onImagePress={() => handlePostPress(item.id)} />
         
         <View style={styles.postContent}>
-          <Text style={styles.postTitle}>{item.title}</Text>
+          <TouchableOpacity onPress={() => handlePostPress(item.id)}>
+            <Text style={styles.postTitle}>{item.title}</Text>
+          </TouchableOpacity>
           
           <View style={styles.postMeta}>
             <TouchableOpacity 
@@ -126,9 +184,11 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           </View>
           
-          <Text style={styles.postDescription} numberOfLines={2}>
-            {item.description}
-          </Text>
+          <TouchableOpacity onPress={() => handlePostPress(item.id)}>
+            <Text style={styles.postDescription} numberOfLines={2}>
+              {item.description}
+            </Text>
+          </TouchableOpacity>
           
           <View style={styles.postStats}>
             <View style={styles.stat}>
@@ -142,7 +202,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
             <Text style={styles.timeAgo}>{formatTimeAgo(item.createdAt)}</Text>
           </View>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -254,13 +314,43 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  imageContainer: {
+  imageCarouselContainer: {
+    height: 200,
     position: 'relative',
+    width: '100%',
   },
   postImage: {
-    width: '100%',
     height: 200,
     resizeMode: 'cover',
+  },
+  paginationContainer: {
+    position: 'absolute',
+    bottom: SPACING.sm,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',     
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    marginHorizontal: 3,
+  },
+  paginationDotActive: {
+    backgroundColor: COLORS.background,
+  },
+  noImageContainer: {
+    height: 200,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.border,
+  },
+  noImageText: {
+    color: COLORS.darkGray,
+    fontSize: FONT_SIZE.md,
   },
   postContent: {
     padding: SPACING.md,
@@ -438,19 +528,6 @@ const styles = StyleSheet.create({
   },
   headerSearchIcon: {
     fontSize: FONT_SIZE.lg,
-  },
-  multipleImagesIndicator: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: COLORS.primary,
-    padding: SPACING.xs,
-    borderRadius: BORDER_RADIUS.round,
-  },
-  imageCountText: {
-    color: COLORS.background,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: 'bold',
   },
 });
 
