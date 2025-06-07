@@ -265,6 +265,10 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.statCount}>{item.comments}</Text>
               <Text style={styles.statLabel}>Comments</Text>
             </View>
+            <View style={styles.stat}>
+              <Text style={styles.statCount}>{item.connectedPosts?.length || 0}</Text>
+              <Text style={styles.statLabel}>Made This</Text>
+            </View>
             <Text style={styles.timeAgo}>{formatTimeAgo(item.createdAt)}</Text>
             <SaveButton post={item} currentUser={user} />
           </View>
