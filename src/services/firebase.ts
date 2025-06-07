@@ -580,6 +580,48 @@ export const searchUsers = async (query: string, limit: number = 20) => {
   }
 };
 
+// Search posts
+export const searchPosts = async (query: string, limit: number = 20) => {
+  try {
+    if (!query.trim()) return [];
+    
+    const lowerQuery = query.toLowerCase().trim();
+    
+    // Get all posts and filter client-side for better search capabilities
+    const querySnapshot = await db.collection('posts')
+      .limit(200) // Get more results to filter client-side
+      .get();
+    
+    const filteredPosts = querySnapshot.docs
+      .map(doc => {
+        const data = doc.data();
+        const createdAt = data.createdAt && data.createdAt.toMillis ? 
+          data.createdAt.toMillis() : 
+          Date.now();
+        return { 
+          id: doc.id, 
+          ...data,
+          createdAt
+        } as BreadPost;
+      })
+      .filter(post => {
+        const title = post.title?.toLowerCase() || '';
+        const description = post.description?.toLowerCase() || '';
+        const ingredients = post.ingredients?.join(' ').toLowerCase() || '';
+        
+        // Check if query matches title, description, or ingredients (partial)
+        return title.includes(lowerQuery) || 
+               description.includes(lowerQuery) || 
+               ingredients.includes(lowerQuery);
+      })
+      .slice(0, limit); // Apply the limit after filtering
+    
+    return filteredPosts;
+  } catch (error) {
+    throw error;
+  }
+};
+
 // Get posts from followed users
 export const getFollowingPosts = async (followingIds: string[]) => {
   try {

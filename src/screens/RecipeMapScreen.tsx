@@ -14,7 +14,18 @@ import {
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
-import { AppleMaps, GoogleMaps } from 'expo-maps';
+import Constants from 'expo-constants';
+// Conditionally import maps only if not in Expo Go
+let AppleMaps: any, GoogleMaps: any;
+if (!Constants.appOwnership || Constants.appOwnership !== 'expo') {
+  try {
+    const ExpoMaps = require('expo-maps');
+    AppleMaps = ExpoMaps.AppleMaps;
+    GoogleMaps = ExpoMaps.GoogleMaps;
+  } catch (error) {
+    console.log('Maps not available in Expo Go');
+  }
+}
 import { RootStackParamList, BreadPost } from '../types';
 import { getConnectedPosts } from '../services/firebase';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
@@ -116,6 +127,24 @@ const RecipeMapScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 
   const renderMap = () => {
+    // Check if we're in Expo Go
+    if (Constants.appOwnership === 'expo' || !AppleMaps || !GoogleMaps) {
+      return (
+        <View style={styles.expoGoContainer}>
+          <Text style={styles.expoGoTitle}>Maps Not Available</Text>
+          <Text style={styles.expoGoText}>
+            Map view requires a development build. Use the list view to see recipe locations.
+          </Text>
+          <TouchableOpacity 
+            style={styles.expoGoButton}
+            onPress={() => setShowList(true)}
+          >
+            <Text style={styles.expoGoButtonText}>Switch to List View</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     const initialRegion = {
       latitude: posts.length > 0 && posts[0].location?.latitude ? posts[0].location.latitude : 37.78825,
       longitude: posts.length > 0 && posts[0].location?.longitude ? posts[0].location.longitude : -122.4324,
@@ -147,7 +176,7 @@ const RecipeMapScreen: React.FC<Props> = ({ navigation, route }) => {
             zoom: 10,
           }}
           markers={markers}
-          onMarkerClick={(marker) => {
+          onMarkerClick={(marker: any) => {
             const post = posts.find(p => p.id === marker.id);
             if (post) {
               handlePostPress(post.id);
@@ -167,7 +196,7 @@ const RecipeMapScreen: React.FC<Props> = ({ navigation, route }) => {
             zoom: 10,
           }}
           markers={markers}
-          onMarkerClick={(marker) => {
+          onMarkerClick={(marker: any) => {
             const post = posts.find(p => p.id === marker.id);
             if (post) {
               handlePostPress(post.id);
@@ -430,6 +459,34 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.xs,
     color: COLORS.darkGray,
     marginRight: SPACING.md,
+  },
+  expoGoContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  expoGoTitle: {
+    fontSize: FONT_SIZE.xl,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+  expoGoText: {
+    fontSize: FONT_SIZE.md,
+    color: COLORS.darkGray,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+  },
+  expoGoButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+  },
+  expoGoButtonText: {
+    color: COLORS.background,
+    fontWeight: 'bold',
   },
 });
 

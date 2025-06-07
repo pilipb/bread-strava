@@ -492,7 +492,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
           {isOwnProfile && (
             <TouchableOpacity 
               style={styles.socialNavButton}
-              onPress={() => navigation.navigate('Search')}
+              onPress={() => navigation.navigate('UserSearch')}
               activeOpacity={0.7}
             >
               <Text style={styles.socialNavIcon}>🔍</Text>

@@ -13,6 +13,7 @@ import PostDetailsScreen from '../screens/PostDetailsScreen';
 import CreatePostScreen from '../screens/CreatePostScreen';
 import EditPostScreen from '../screens/EditPostScreen';
 import SearchScreen from '../screens/SearchScreen';
+import PostSearchScreen from '../screens/PostSearchScreen';
 import FollowingScreen from '../screens/FollowingScreen';
 import RecipeMapScreen from '../screens/RecipeMapScreen';
 
@@ -64,6 +65,11 @@ export const Navigation = () => {
             />
             <Stack.Screen
               name="Search"
+              component={PostSearchScreen}
+              options={{ title: 'Search' }}
+            />
+            <Stack.Screen
+              name="UserSearch"
               component={SearchScreen}
               options={{ title: 'Find Bakers' }}
             />

@@ -16,7 +16,7 @@ import { updateUserProfile } from '../store/authSlice';
 import { searchUsers, followUser, unfollowUser } from '../services/firebase';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
 
-type SearchScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Search'>;
+type SearchScreenNavigationProp = StackNavigationProp<RootStackParamList, 'UserSearch'>;
 
 interface Props {
   navigation: SearchScreenNavigationProp;

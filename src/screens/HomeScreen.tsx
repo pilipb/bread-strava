@@ -30,6 +30,15 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
   useEffect(() => {
     // Set navigation options with profile picture in header
     navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity 
+          style={styles.headerSearchButton}
+          onPress={() => navigation.navigate('Search')}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.headerSearchIcon}>🔍</Text>
+        </TouchableOpacity>
+      ),
       headerRight: () => (
         <TouchableOpacity 
           style={styles.headerProfileButton}
@@ -422,6 +431,13 @@ const styles = StyleSheet.create({
     color: COLORS.background,
     fontSize: FONT_SIZE.sm,
     fontWeight: 'bold',
+  },
+  headerSearchButton: {
+    padding: SPACING.xs,
+    marginLeft: SPACING.xs,
+  },
+  headerSearchIcon: {
+    fontSize: FONT_SIZE.lg,
   },
   multipleImagesIndicator: {
     position: 'absolute',

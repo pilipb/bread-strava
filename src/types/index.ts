@@ -66,6 +66,8 @@ export type RootStackParamList = {
   } | undefined;
   EditPost: { postId: string };
   Search: undefined;
+  PostSearch: undefined;
+  UserSearch: undefined;
   Following: { userId: string; type: 'following' | 'followers' };
   RecipeMap: { originalRecipeId: string };
 }; 
