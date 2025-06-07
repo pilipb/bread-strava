@@ -9,9 +9,12 @@ import {
   ScrollView,
   Image,
   FlatList,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
+import { AppleMaps, GoogleMaps } from 'expo-maps';
 import { RootStackParamList, BreadPost } from '../types';
 import { getConnectedPosts } from '../services/firebase';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
@@ -28,6 +31,7 @@ const RecipeMapScreen: React.FC<Props> = ({ navigation, route }) => {
   const { originalRecipeId } = route.params;
   const [posts, setPosts] = useState<BreadPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showList, setShowList] = useState(false);
 
   useEffect(() => {
     loadConnectedPosts();
@@ -111,6 +115,83 @@ const RecipeMapScreen: React.FC<Props> = ({ navigation, route }) => {
     </TouchableOpacity>
   );
 
+  const renderMap = () => {
+    const initialRegion = {
+      latitude: posts.length > 0 && posts[0].location?.latitude ? posts[0].location.latitude : 37.78825,
+      longitude: posts.length > 0 && posts[0].location?.longitude ? posts[0].location.longitude : -122.4324,
+      latitudeDelta: 0.0922,
+      longitudeDelta: 0.0421,
+    };
+
+    const markers = posts
+      .filter(post => post.location?.latitude && post.location?.longitude)
+      .map(post => ({
+        id: post.id,
+        coordinates: {
+          latitude: post.location!.latitude,
+          longitude: post.location!.longitude,
+        },
+        title: post.title,
+        snippet: `by ${post.username} • ${formatTimeAgo(post.createdAt)}`,
+      }));
+
+    if (Platform.OS === 'ios') {
+      return (
+        <AppleMaps.View
+          style={styles.map}
+          cameraPosition={{
+            coordinates: {
+              latitude: initialRegion.latitude,
+              longitude: initialRegion.longitude,
+            },
+            zoom: 10,
+          }}
+          markers={markers}
+          onMarkerClick={(marker) => {
+            const post = posts.find(p => p.id === marker.id);
+            if (post) {
+              handlePostPress(post.id);
+            }
+          }}
+        />
+      );
+    } else if (Platform.OS === 'android') {
+      return (
+        <GoogleMaps.View
+          style={styles.map}
+          cameraPosition={{
+            coordinates: {
+              latitude: initialRegion.latitude,
+              longitude: initialRegion.longitude,
+            },
+            zoom: 10,
+          }}
+          markers={markers}
+          onMarkerClick={(marker) => {
+            const post = posts.find(p => p.id === marker.id);
+            if (post) {
+              handlePostPress(post.id);
+            }
+          }}
+          properties={{
+            isMyLocationEnabled: true,
+          }}
+          uiSettings={{
+            myLocationButtonEnabled: true,
+          }}
+        />
+      );
+    } else {
+      return (
+        <View style={styles.unsupportedContainer}>
+          <Text style={styles.unsupportedText}>
+            Maps are only available on iOS and Android
+          </Text>
+        </View>
+      );
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
@@ -144,22 +225,30 @@ const RecipeMapScreen: React.FC<Props> = ({ navigation, route }) => {
           <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Recipe Locations</Text>
-        <Text style={styles.postCount}>{posts.length} locations</Text>
+        <View style={styles.headerRight}>
+          <Text style={styles.postCount}>{posts.length} locations</Text>
+          <TouchableOpacity 
+            style={styles.viewToggle}
+            onPress={() => setShowList(!showList)}
+          >
+            <Text style={styles.viewToggleText}>{showList ? '🗺️' : '📋'}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={styles.mapNotice}>
-        <Text style={styles.mapNoticeText}>
-          🗺️ Interactive map coming soon! For now, here are all the locations where this recipe has been made:
-        </Text>
-      </View>
-
-      <FlatList
-        data={posts}
-        renderItem={renderLocationItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-      />
+      {showList ? (
+        <FlatList
+          data={posts}
+          renderItem={renderLocationItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+        />
+      ) : (
+        <View style={styles.mapContainer}>
+          {renderMap()}
+        </View>
+      )}
     </View>
   );
 };
@@ -229,15 +318,35 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     color: COLORS.darkGray,
   },
-  mapNotice: {
-    backgroundColor: COLORS.lightGray,
-    padding: SPACING.md,
-    marginHorizontal: SPACING.md,
-    marginTop: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  mapNoticeText: {
+  viewToggle: {
+    marginLeft: SPACING.sm,
+    padding: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.primary,
+  },
+  viewToggleText: {
+    color: COLORS.background,
     fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
+  },
+  mapContainer: {
+    flex: 1,
+  },
+  map: {
+    flex: 1,
+  },
+  unsupportedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.lg,
+  },
+  unsupportedText: {
+    fontSize: FONT_SIZE.md,
     color: COLORS.darkGray,
     textAlign: 'center',
   },
