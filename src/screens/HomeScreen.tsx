@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, FlatList, TouchableOpacity, ActivityIndicator, Image, ScrollView, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, FlatList, TouchableOpacity, ActivityIndicator, Image, ScrollView, Dimensions, Alert } from 'react-native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList, BreadPost } from '../types';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchFollowingPosts, refreshFollowingPosts } from '../store/postsSlice';
+import { savePost, unsavePost, checkIfUserSavedPost } from '../services/firebase';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -76,6 +77,71 @@ const ImageCarousel = ({ images, onImagePress }: { images: string[]; onImagePres
         </View>
       )}
     </View>
+  );
+};
+
+// Save Button Component
+const SaveButton = ({ post, currentUser }: { post: BreadPost; currentUser: any }) => {
+  const [isSaved, setIsSaved] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+
+  useEffect(() => {
+    if (currentUser && currentUser.id !== post.userId) {
+      checkSaved();
+    }
+  }, [currentUser, post.id]);
+
+  const checkSaved = async () => {
+    if (!currentUser) return;
+    
+    try {
+      const saved = await checkIfUserSavedPost(post.id, currentUser.id);
+      setIsSaved(saved);
+    } catch (error) {
+      console.error('Error checking if post is saved:', error);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!currentUser || saveLoading) return;
+
+    try {
+      setSaveLoading(true);
+      if (isSaved) {
+        await unsavePost(post.id, currentUser.id);
+        setIsSaved(false);
+      } else {
+        await savePost(post.id, currentUser.id);
+        setIsSaved(true);
+      }
+    } catch (error) {
+      console.error('Error saving/unsaving post:', error);
+      Alert.alert('Error', 'Failed to save post. Please try again.');
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  // Don't show save button for own posts
+  if (!currentUser || currentUser.id === post.userId) {
+    return null;
+  }
+
+  return (
+    <TouchableOpacity
+      style={styles.saveButton}
+      onPress={handleSave}
+      disabled={saveLoading}
+      activeOpacity={0.7}
+    >
+      {saveLoading ? (
+        <ActivityIndicator size="small" color={COLORS.background} />
+      ) : (
+        <Text style={styles.saveButtonText}>
+          {isSaved ? '🔖' : '📋'}
+        </Text>
+      )}
+    </TouchableOpacity>
   );
 };
 
@@ -200,6 +266,7 @@ const HomeScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.statLabel}>Comments</Text>
             </View>
             <Text style={styles.timeAgo}>{formatTimeAgo(item.createdAt)}</Text>
+            <SaveButton post={item} currentUser={user} />
           </View>
         </View>
       </View>
@@ -528,6 +595,17 @@ const styles = StyleSheet.create({
   },
   headerSearchIcon: {
     fontSize: FONT_SIZE.lg,
+  },
+  saveButton: {
+    padding: SPACING.xs,
+    borderRadius: BORDER_RADIUS.round,
+    backgroundColor: COLORS.primary,
+    marginLeft: SPACING.xs,
+  },
+  saveButtonText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
   },
 });
 

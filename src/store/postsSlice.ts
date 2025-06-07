@@ -1,10 +1,11 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { BreadPost } from '../types';
-import { getAllPosts, getUserPosts, getPostById, createPost, updatePost, deletePost, getFollowingPosts } from '../services/firebase';
+import { getAllPosts, getUserPosts, getPostById, createPost, updatePost, deletePost, getFollowingPosts, getSavedPosts } from '../services/firebase';
 
 interface PostsState {
   posts: BreadPost[];
   userPosts: BreadPost[];
+  savedPosts: BreadPost[];
   currentPost: BreadPost | null;
   loading: boolean;
   refreshing: boolean;
@@ -14,6 +15,7 @@ interface PostsState {
 const initialState: PostsState = {
   posts: [],
   userPosts: [],
+  savedPosts: [],
   currentPost: null,
   loading: false,
   refreshing: false,
@@ -118,6 +120,18 @@ export const refreshFollowingPosts = createAsyncThunk(
   async (followingIds: string[], { rejectWithValue }) => {
     try {
       const posts = await getFollowingPosts(followingIds);
+      return posts;
+    } catch (error: any) {
+      return rejectWithValue(error.message);
+    }
+  }
+);
+
+export const fetchSavedPosts = createAsyncThunk(
+  'posts/fetchSaved',
+  async (userId: string, { rejectWithValue }) => {
+    try {
+      const posts = await getSavedPosts(userId);
       return posts;
     } catch (error: any) {
       return rejectWithValue(error.message);
@@ -243,6 +257,18 @@ const postsSlice = createSlice({
       })
       .addCase(refreshFollowingPosts.rejected, (state, action) => {
         state.refreshing = false;
+        state.error = action.payload as string;
+      })
+      .addCase(fetchSavedPosts.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchSavedPosts.fulfilled, (state, action) => {
+        state.loading = false;
+        state.savedPosts = action.payload;
+      })
+      .addCase(fetchSavedPosts.rejected, (state, action) => {
+        state.loading = false;
         state.error = action.payload as string;
       });
   },

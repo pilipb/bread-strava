@@ -20,11 +20,12 @@ import firebase from 'firebase/compat/app';
 import 'firebase/compat/storage';
 import { RootStackParamList, BreadPost, User } from '../types';
 import { useAppDispatch, useAppSelector } from '../store';
-import { fetchUserPosts } from '../store/postsSlice';
+import { fetchUserPosts, fetchSavedPosts } from '../store/postsSlice';
 import { logout, updateUserProfile as updateAuthUserProfile } from '../store/authSlice';
 import { getUserProfile, followUser, unfollowUser, updateUserProfile } from '../services/firebase';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
 import ActivityGraph from '../components/ActivityGraph';
+import PostCard from '../components/PostCard';
 
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Profile'>;
 type ProfileScreenRouteProp = RouteProp<RootStackParamList, 'Profile'>;
@@ -36,7 +37,7 @@ interface Props {
 
 const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const dispatch = useAppDispatch();
-  const { userPosts, loading: postsLoading } = useAppSelector((state) => state.posts);
+  const { userPosts, savedPosts, loading: postsLoading } = useAppSelector((state) => state.posts);
   const { user: currentUser } = useAppSelector((state) => state.auth);
   
   const [profileUser, setProfileUser] = useState<User | null>(null);
@@ -49,6 +50,7 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
   const [editingBio, setEditingBio] = useState('');
   const [bioUpdateLoading, setBioUpdateLoading] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [activeTab, setActiveTab] = useState<'posts' | 'saved'>('posts');
   
   // Determine if we're viewing our own profile or someone else's
   const userId = route.params?.userId || currentUser?.id;
@@ -80,6 +82,11 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
         
         // Fetch user posts
         dispatch(fetchUserPosts(userId));
+        
+        // Fetch saved posts if it's the current user's profile
+        if (isOwnProfile && currentUser) {
+          dispatch(fetchSavedPosts(currentUser.id));
+        }
       } catch (err) {
         setError('Failed to load profile data. Please try again.');
         console.error(err);
@@ -347,51 +354,34 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
     setBioEditModalVisible(false);
   };
 
-  const renderPostItem = ({ item }: { item: BreadPost }) => {
-    // Get the first image URL (supports both single and multiple images)
-    const getFirstImageURL = (post: BreadPost) => {
-      if (post.photoURLs && post.photoURLs.length > 0) {
-        return post.photoURLs[0];
-      }
-      return post.photoURL;
-    };
+  const renderPostItem = ({ item }: { item: BreadPost }) => (
+    <PostCard 
+      post={item} 
+      onPress={handlePostPress}
+      showSaveButton={!isOwnProfile}
+    />
+  );
 
-    const hasMultipleImages = item.photoURLs && item.photoURLs.length > 1;
+  const renderTabButton = (tab: 'posts' | 'saved', title: string) => (
+    <TouchableOpacity
+      style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
+      onPress={() => setActiveTab(tab)}
+      activeOpacity={0.7}
+    >
+      <Text style={[styles.tabButtonText, activeTab === tab && styles.activeTabButtonText]}>
+        {title}
+      </Text>
+    </TouchableOpacity>
+  );
 
-    return (
-      <TouchableOpacity 
-        style={styles.postCard}
-        onPress={() => handlePostPress(item.id)}
-        activeOpacity={0.9}
-      >
-        <View style={styles.imageContainer}>
-          <Image source={{ uri: getFirstImageURL(item) }} style={styles.postImage} />
-          {hasMultipleImages && (
-            <View style={styles.multipleImagesIndicator}>
-              <Text style={styles.imageCountText}>📷 {item.photoURLs!.length}</Text>
-            </View>
-          )}
-        </View>
-        
-        <View style={styles.postContent}>
-          <Text style={styles.postTitle}>{item.title}</Text>
-          <View style={styles.difficultyBadge}>
-            <Text style={styles.difficultyText}>{item.difficulty}</Text>
-          </View>
-          
-          <View style={styles.postStats}>
-            <View style={styles.stat}>
-              <Text style={styles.statCount}>{item.likes}</Text>
-              <Text style={styles.statLabel}>Rises</Text>
-            </View>
-            <View style={styles.stat}>
-              <Text style={styles.statCount}>{item.comments}</Text>
-              <Text style={styles.statLabel}>Comments</Text>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
+  const getCurrentPosts = () => {
+    if (!isOwnProfile) return userPosts;
+    return activeTab === 'posts' ? userPosts : savedPosts;
+  };
+
+  const getEmptyMessage = () => {
+    if (!isOwnProfile) return 'No bread posts yet!';
+    return activeTab === 'posts' ? 'No bread posts yet!' : 'No saved posts yet!';
   };
 
   if (loading || !profileUser) {
@@ -537,36 +527,67 @@ const ProfileScreen: React.FC<Props> = ({ navigation, route }) => {
         </View>
         
         <View style={styles.postsContainer}>
-          <Text style={styles.sectionTitle}>
-            {isOwnProfile ? 'My Bread Creations' : `${profileUser.username}'s Bread Creations`}
-          </Text>
-          
-          {postsLoading && userPosts.length === 0 ? (
-            <ActivityIndicator size="small" color={COLORS.primary} style={styles.postsLoader} />
+          {isOwnProfile ? (
+            <View>
+              <View style={styles.tabContainer}>
+                {renderTabButton('posts', 'My Bread Creations')}
+                {renderTabButton('saved', 'Saved')}
+              </View>
+              
+              {postsLoading && getCurrentPosts().length === 0 ? (
+                <ActivityIndicator size="small" color={COLORS.primary} style={styles.postsLoader} />
+              ) : (
+                <FlatList
+                  data={getCurrentPosts()}
+                  renderItem={renderPostItem}
+                  keyExtractor={(item) => item.id}
+                  numColumns={2}
+                  contentContainerStyle={styles.postsList}
+                  showsVerticalScrollIndicator={false}
+                  columnWrapperStyle={styles.postsRow}
+                  scrollEnabled={false}
+                  ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                      <Text style={styles.emptyText}>{getEmptyMessage()}</Text>
+                      {activeTab === 'posts' && (
+                        <TouchableOpacity 
+                          style={styles.createButton}
+                          onPress={() => navigation.navigate('CreatePost')}
+                        >
+                          <Text style={styles.createButtonText}>Create Your First Post</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  }
+                />
+              )}
+            </View>
           ) : (
-            <FlatList
-              data={userPosts}
-              renderItem={renderPostItem}
-              keyExtractor={(item) => item.id}
-              numColumns={2}
-              contentContainerStyle={styles.postsList}
-              showsVerticalScrollIndicator={false}
-              columnWrapperStyle={styles.postsRow}
-              scrollEnabled={false}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>No bread posts yet!</Text>
-                  {isOwnProfile && (
-                    <TouchableOpacity 
-                      style={styles.createButton}
-                      onPress={() => navigation.navigate('CreatePost')}
-                    >
-                      <Text style={styles.createButtonText}>Create Your First Post</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              }
-            />
+            <View>
+              <Text style={styles.sectionTitle}>
+                {`${profileUser.username}'s Bread Creations`}
+              </Text>
+              
+              {postsLoading && userPosts.length === 0 ? (
+                <ActivityIndicator size="small" color={COLORS.primary} style={styles.postsLoader} />
+              ) : (
+                <FlatList
+                  data={userPosts}
+                  renderItem={renderPostItem}
+                  keyExtractor={(item) => item.id}
+                  numColumns={2}
+                  contentContainerStyle={styles.postsList}
+                  showsVerticalScrollIndicator={false}
+                  columnWrapperStyle={styles.postsRow}
+                  scrollEnabled={false}
+                  ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                      <Text style={styles.emptyText}>No bread posts yet!</Text>
+                    </View>
+                  }
+                />
+              )}
+            </View>
           )}
         </View>
       </ScrollView>
@@ -786,70 +807,6 @@ const styles = StyleSheet.create({
   },
   postsRow: {
     justifyContent: 'space-between',
-  },
-  postCard: {
-    width: '48%',
-    backgroundColor: COLORS.card,
-    borderRadius: BORDER_RADIUS.md,
-    overflow: 'hidden',
-    marginBottom: SPACING.md,
-    shadowColor: COLORS.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  imageContainer: {
-    position: 'relative',
-  },
-  postImage: {
-    width: '100%',
-    height: 120,
-    resizeMode: 'cover',
-  },
-  postContent: {
-    padding: SPACING.sm,
-  },
-  postTitle: {
-    fontSize: FONT_SIZE.md,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-  },
-  difficultyBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: COLORS.secondary,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs / 2,
-    borderRadius: BORDER_RADIUS.round,
-    marginBottom: SPACING.sm,
-  },
-  difficultyText: {
-    color: COLORS.background,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: 'bold',
-    textTransform: 'capitalize',
-  },
-  postStats: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    paddingTop: SPACING.xs,
-  },
-  stat: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginRight: SPACING.md,
-  },
-  statCount: {
-    fontSize: FONT_SIZE.sm,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginRight: SPACING.xs / 2,
-  },
-  statLabel: {
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.darkGray,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -1089,18 +1046,31 @@ const styles = StyleSheet.create({
     color: COLORS.background,
     fontWeight: 'bold',
   },
-  multipleImagesIndicator: {
-    position: 'absolute',
-    top: 5,
-    right: 5,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: BORDER_RADIUS.round,
-    padding: SPACING.xs,
+  tabButton: {
+    flex: 1,
+    padding: SPACING.md,
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
   },
-  imageCountText: {
-    color: COLORS.background,
-    fontSize: FONT_SIZE.xs,
+  activeTabButton: {
+    backgroundColor: COLORS.primary,
+  },
+  tabButtonText: {
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
     fontWeight: 'bold',
+  },
+  activeTabButtonText: {
+    color: COLORS.background,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: BORDER_RADIUS.sm,
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
   },
 });
 

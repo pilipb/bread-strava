@@ -95,7 +95,8 @@ export const getUserProfile = async (userId: string) => {
         ...userData,
         createdAt: userData?.createdAt?.toMillis ? userData.createdAt.toMillis() : Date.now(),
         following: userData?.following || [], // Ensure following array exists
-        followers: userData?.followers || []  // Ensure followers array exists
+        followers: userData?.followers || [], // Ensure followers array exists
+        savedPosts: userData?.savedPosts || [] // Ensure savedPosts array exists
       } as User;
       
       console.log('✅ Processed user data:', processedUserData);
@@ -484,12 +485,96 @@ export const checkIfUserLikedPost = async (postId: string, userId: string): Prom
   }
 };
 
+// Save/Unsave functions
+export const savePost = async (postId: string, userId: string) => {
+  try {
+    const userRef = db.collection('users').doc(userId);
+    await userRef.update({
+      savedPosts: firebase.firestore.FieldValue.arrayUnion(postId)
+    });
+    console.log('Post saved successfully');
+  } catch (error) {
+    console.error('Error saving post:', error);
+    throw error;
+  }
+};
+
+export const unsavePost = async (postId: string, userId: string) => {
+  try {
+    const userRef = db.collection('users').doc(userId);
+    await userRef.update({
+      savedPosts: firebase.firestore.FieldValue.arrayRemove(postId)
+    });
+    console.log('Post unsaved successfully');
+  } catch (error) {
+    console.error('Error unsaving post:', error);
+    throw error;
+  }
+};
+
+export const checkIfUserSavedPost = async (postId: string, userId: string): Promise<boolean> => {
+  try {
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    return userData?.savedPosts?.includes(postId) || false;
+  } catch (error) {
+    console.error('Error checking if user saved post:', error);
+    return false;
+  }
+};
+
+export const getSavedPosts = async (userId: string) => {
+  try {
+    const userDoc = await db.collection('users').doc(userId).get();
+    const userData = userDoc.data();
+    const savedPostIds = userData?.savedPosts || [];
+    
+    if (savedPostIds.length === 0) return [];
+    
+    // Get saved posts in batches (Firestore 'in' query limit is 10)
+    const posts: BreadPost[] = [];
+    const batches = [];
+    for (let i = 0; i < savedPostIds.length; i += 10) {
+      const batch = savedPostIds.slice(i, i + 10);
+      batches.push(batch);
+    }
+    
+    for (const batch of batches) {
+      const querySnapshot = await db.collection('posts')
+        .where(firebase.firestore.FieldPath.documentId(), 'in', batch)
+        .get();
+      
+      const batchPosts = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        const createdAt = data.createdAt && data.createdAt.toMillis ? 
+          data.createdAt.toMillis() : 
+          Date.now();
+          
+        return { 
+          id: doc.id, 
+          ...data,
+          createdAt
+        } as BreadPost;
+      });
+      
+      posts.push(...batchPosts);
+    }
+    
+    // Sort by creation date (newest first)
+    return posts.sort((a, b) => b.createdAt - a.createdAt);
+  } catch (error) {
+    console.error('Error getting saved posts:', error);
+    throw error;
+  }
+};
+
 export const createUserProfile = async (userId: string, userData: Omit<User, 'photoURL' | 'bio' | 'following' | 'followers'>) => {
   try {
     await db.collection('users').doc(userId).set({
       ...userData,
       following: [], // Initialize empty following array
       followers: [], // Initialize empty followers array
+      savedPosts: [], // Initialize empty savedPosts array
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
   } catch (error) {
@@ -562,7 +647,8 @@ export const searchUsers = async (query: string, limit: number = 20) => {
           ...data,
           createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now(),
           following: data.following || [],
-          followers: data.followers || []
+          followers: data.followers || [],
+          savedPosts: data.savedPosts || []
         } as User;
       })
       .filter(user => {
@@ -675,7 +761,8 @@ export const getUsersByIds = async (userIds: string[]) => {
           ...data,
           createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now(),
           following: data.following || [],
-          followers: data.followers || []
+          followers: data.followers || [],
+          savedPosts: data.savedPosts || []
         } as User;
       });
       

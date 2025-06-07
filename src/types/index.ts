@@ -6,6 +6,7 @@ export interface User {
   bio?: string;
   following: string[]; // Array of user IDs that this user follows
   followers: string[]; // Array of user IDs that follow this user
+  savedPosts?: string[]; // Array of post IDs that this user has saved
   createdAt: number;
 }
 

@@ -21,7 +21,7 @@ import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList, Comment } from '../types';
 import { useAppDispatch, useAppSelector } from '../store';
 import { fetchPostById, removePost } from '../store/postsSlice';
-import { addComment, getCommentsForPost, likePost, unlikePost, checkIfUserLikedPost } from '../services/firebase';
+import { addComment, getCommentsForPost, likePost, unlikePost, checkIfUserLikedPost, savePost, unsavePost, checkIfUserSavedPost } from '../services/firebase';
 import { COLORS, SPACING, FONT_SIZE, BORDER_RADIUS } from '../theme';
 
 type PostDetailsScreenNavigationProp = StackNavigationProp<RootStackParamList, 'PostDetails'>;
@@ -46,6 +46,8 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isRisen, setIsRisen] = useState(false);
   const [risingPost, setRisingPost] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [savingPost, setSavingPost] = useState(false);
 
   useEffect(() => {
     dispatch(fetchPostById(postId));
@@ -57,6 +59,15 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
     if (user && currentPost) {
       checkIfUserLikedPost(postId, user.id)
         .then(setIsRisen)
+        .catch(console.error);
+    }
+  }, [user, currentPost, postId]);
+
+  useEffect(() => {
+    // Check if user has saved this post
+    if (user && currentPost && user.id !== currentPost.userId) {
+      checkIfUserSavedPost(postId, user.id)
+        .then(setIsSaved)
         .catch(console.error);
     }
   }, [user, currentPost, postId]);
@@ -235,6 +246,33 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
     }
   };
 
+  const handleSavePost = async () => {
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to save posts');
+      return;
+    }
+
+    if (savingPost) return;
+
+    try {
+      setSavingPost(true);
+      
+      if (isSaved) {
+        await unsavePost(postId, user.id);
+        setIsSaved(false);
+      } else {
+        await savePost(postId, user.id);
+        setIsSaved(true);
+      }
+      
+    } catch (error) {
+      console.error('Error saving/unsaving post:', error);
+      Alert.alert('Error', 'Failed to save post. Please try again.');
+    } finally {
+      setSavingPost(false);
+    }
+  };
+
   const handleMadeThis = () => {
     if (currentPost) {
       navigation.navigate('CreatePost', { 
@@ -385,6 +423,28 @@ const PostDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
                   </>
                 )}
               </TouchableOpacity>
+              
+              {/* Save button - only show for other users' posts */}
+              {user && user.id !== currentPost.userId && (
+                <TouchableOpacity 
+                  style={styles.saveButton}
+                  onPress={handleSavePost}
+                  disabled={savingPost}
+                >
+                  {savingPost ? (
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                  ) : (
+                    <>
+                      <Text style={styles.saveIcon}>
+                        {isSaved ? '🔖' : '📋'}
+                      </Text>
+                      <Text style={styles.saveLabel}>
+                        {isSaved ? 'Saved' : 'Save'}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
           
@@ -1017,6 +1077,24 @@ const styles = StyleSheet.create({
     marginRight: SPACING.md,
   },
   connectedPostText: {
+    color: COLORS.background,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: 'bold',
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+    marginLeft: SPACING.md,
+  },
+  saveIcon: {
+    fontSize: FONT_SIZE.lg,
+    marginRight: SPACING.xs,
+  },
+  saveLabel: {
     color: COLORS.background,
     fontSize: FONT_SIZE.sm,
     fontWeight: 'bold',
